@@ -20,13 +20,15 @@ def prcocess_tiff(s_dir, d_dir_train, d_dir_val, bl = 200, wl = 3840):
     file_names = glob(os.path.join(s_dir, '*.tiff'))
     for file_name in file_names:
         print ('processing file: ', file_name)
-        img = cv2.imread(file_name)
+        img = cv2.imread(file_name, -1)
         img = (img - bl) / (wl - bl)
+        img *= 255.0
         coin = random.random()
         if coin > 0.3:
-            save_name = os.path.join(d_dir_train, file_name.split('./')[-1][:-5] + '.png')
+            save_name = os.path.join(d_dir_train, file_name.split('/')[-1][:-5] + '.png')
         else:
-            save_name = os.path.join(d_dir_val, file_name.split('./')[-1][:-5] + '.png')
+            save_name = os.path.join(d_dir_val, file_name.split('/')[-1][:-5] + '.png')
+        # print (save_name)
         cv2.imwrite(save_name, img)
 
 
@@ -127,4 +129,11 @@ def special_downsampling(img, scale):
 
 
 if __name__ == '__main__':
-    prcocess_tiff()
+    s_dir = '../Downloads/Sony'
+    d_dir_train = './data/sony/train'
+    d_dir_val = './data/sony/val'
+    if not os.path.exists(d_dir_train):
+        os.mkdir(d_dir_train)
+    if not os.path.exists(d_dir_val):
+        os.mkdir(d_dir_val)
+    prcocess_tiff(s_dir, d_dir_train, d_dir_val)
