@@ -17,7 +17,9 @@ flags.DEFINE_integer(
 
 flags.DEFINE_string('train_log_dir', './logs_sony/',
                     'Directory where to write training.')
-flags.DEFINE_string('dataset_dir', './data/sony/', '')
+
+flags.DEFINE_string('dataset_dir_train', './data/sony/train/', '')
+flags.DEFINE_string('dataset_dir_val', './data/sony/val/', '')
 
 flags.DEFINE_string('val_head', '100M;','val_file start with')
 
@@ -31,7 +33,7 @@ flags.DEFINE_integer('max_number_of_steps', 100000000,
 flags.DEFINE_integer('final_K', 5, 'size of filter')
 # flags.DEFINE_integer('final_K', 1, 'size of filter')
 flags.DEFINE_integer('final_W', 3, 'size of output channel')
-flags.DEFINE_integer('burst_size', 3, 'size of input channel')
+flags.DEFINE_integer('burst_length', 3, 'size of input channel')
 flags.DEFINE_integer('use_noise', 1,
                      '1/0 use noise.')
 
@@ -55,15 +57,22 @@ def train(FLAGS):
     height = width = FLAGS.patch_size
     final_W = FLAGS.final_W
     final_K = FLAGS.final_K
-    burst_size = FLAGS.burst_size
-    dataset_dir = os.path.join(FLAGS.dataset_dir)
+    burst_length = FLAGS.burst_length
+    dataset_dir_train = os.path.join(FLAGS.dataset_dir_train)
+    dataset_dir_val = os.path.join(FLAGS.dataset_dir_val)
     dataset_file_name_train = FLAGS.dataset_file_name_train
     dataset_file_name_val = FLAGS.dataset_file_name_val
+    burst_length = FLAGS.burst_length
 
-    input_stack, gt_image = data_provider.load_batch( ,
-                                    val_head = 'None')
+    input_stack, gt_image = data_provider.load_batch(dataset_dir = dataset_dir_train, patches_per_img = 2, min_queue=2,
+                                    burst_length = burst_length, batch_size=batch_size, repeats=2,
+                                    height = height, width = width, to_shift = 1., upscale = 4, jitter = 16, smalljitter = 2)
+                                    )
 
-    input_stack_val, gt_image_val = data_provider.load_batch( , val_head = FLAGS.val_head)
+    input_stack_val, gt_image_val = data_provider.load_batch(dataset_dir = dataset_dir_val, patches_per_img = 2, min_queue=2,
+                                    burst_length = burst_length, batch_size=batch_size, repeats=2,
+                                    height = height, width = width, to_shift = 1., upscale = 4, jitter = 16, smalljitter = 2)
+                                    )
 
 
     with tf.variable_scope('generator'):

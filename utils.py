@@ -14,8 +14,20 @@ from sklearn.cluster import SpectralClustering, KMeans, AgglomerativeClustering
 import matplotlib.pyplot as plt
 import cv2
 import json
+from glob import glob
 
-
+def prcocess_tiff(s_dir, d_dir_train, d_dir_val, bl = 200, wl = 3840):
+    file_names = glob(os.path.join(s_dir, '*.tiff'))
+    for file_name in file_names:
+        print ('processing file: ', file_name)
+        img = cv2.imread(file_name)
+        img = (img - bl) / (wl - bl)
+        coin = random.random()
+        if coin > 0.3:
+            save_name = os.path.join(d_dir_train, file_name.split('./')[-1][:-5] + '.png')
+        else:
+            save_name = os.path.join(d_dir_val, file_name.split('./')[-1][:-5] + '.png')
+        cv2.imwrite(save_name, img)
 
 
 def batch_stable_process(img_batch, use_crop, use_clip, use_flip, use_rotate, use_noise):
@@ -115,4 +127,4 @@ def special_downsampling(img, scale):
 
 
 if __name__ == '__main__':
-    pass
+    prcocess_tiff()

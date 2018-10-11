@@ -4,6 +4,60 @@ slim = tf.contrib.slim
 import random
 import math
 
+
+
+def make_stack_hqjitter(image, height, width, depth, burst_length, to_shift, upscale, jitter):
+    j_up = jitter * upscale
+    h_up = height * upscale + 2 * j_up
+    w_up = width * upscale + 2 * j_up
+    v_error = tf.maximum((h_up - tf.shape(image)[0] + 1) // 2, 0)
+    h_error = tf.maximum((w_up - tf.shape(image)[1] + 1) // 2, 0)
+    image = tf.pad(image, [[v_error, v_error], [h_error, h_error], [0, 0]])
+
+    stack = []
+    for i in range(depth):
+        stack.append(tf.random_crop(image, [h_up, w_up, 1]))
+    stack = tf.stack(stack, axis=0)
+    return stack
+
+
+def make_batch_hqjitter(patches, burst_length, batch_size, repeats, height, width,
+                        to_shift, upscale, jitter, smalljitter):
+    # patches is [burst_length, h_up, w_up, 3]
+    j_up = jitter * upscale
+    h_up = height * upscale  # + 2 * j_up
+    w_up = width * upscale  # + 2 * j_up
+
+    bigj_patches = patches
+    # print ('bigj_patches: ', bigj_patches.shape)
+    delta_up = (jitter - smalljitter) * upscale
+    smallj_patches = patches[:, delta_up:-delta_up, delta_up:-delta_up, ...]
+
+    unique = batch_size//repeats
+    batch = []
+    for i in range(unique):
+        for j in range(repeats):
+            curr = [patches[i, j_up:-j_up, j_up:-j_up, :]]
+            prob = tf.minimum(tf.cast(tf.random_poisson(
+                1.5, []), tf.float32)/burst_length, 1.)
+            for k in range(burst_length - 1):
+                flip = tf.random_uniform([])
+                p2use = tf.cond(flip < prob, lambda: bigj_patches,
+                                lambda: smallj_patches)
+                # curr.append(tf.random_crop(p2use[i, ...], [h_up, w_up, 3]))
+                curr.append(tf.random_crop(p2use[i, ...], [h_up, w_up, 1]))
+            curr = tf.stack(curr, axis=0)
+            curr = tf.image.resize_images(
+                curr, [height, width], method=tf.image.ResizeMethod.AREA)
+            curr = tf.transpose(curr, [1, 2, 3, 0])
+            batch.append(curr)
+    batch = tf.stack(batch, axis=0)
+    # print ('batch shape: ', batch.shape)
+    return batch
+
+
+
+
 def sRGBforward(x):
     b = .0031308
     gamma = 1./2.4
@@ -174,7 +228,7 @@ def convolve_aniso(img_stack, filts, final_Kh, final_Kw, final_W, layerwise=Fals
     fsh = tf.shape(filts)
     if layerwise:
         filts = tf.reshape(
-            filts, [fsh[0], fsh[1], fsh[2], final_Kh * final_Kw,           initial_W])
+            filts, [fsh[0], fsh[1], fsh[2], final_Kh * final_Kw, initial_W])
     else:
         filts = tf.reshape(
             filts, [fsh[0], fsh[1], fsh[2], final_Kh * final_Kw * initial_W, final_W])
