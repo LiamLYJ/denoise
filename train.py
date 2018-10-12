@@ -8,7 +8,8 @@ gfile = tf.gfile
 
 import net
 from tf_utils import *
-import data_provider
+from data_provider import *
+from demosaic_utils import *
 
 flags.DEFINE_integer('batch_size', 32, 'The number of images in each batch.')
 
@@ -48,6 +49,8 @@ flags.DEFINE_float('crop_min_percent', 0.3, 'crop min percent' )
 flags.DEFINE_float('crop_max_percent', 1.0, 'crop max percent' )
 
 flags.DEFINE_float('mixup', 0.0, 'mix up for data augmentation')
+flags.DEFINE_string('layer_type', 'singlestd',
+                    'Layers in singlestd.')
 
 
 FLAGS = flags.FLAGS
@@ -64,28 +67,93 @@ def train(FLAGS):
     dataset_file_name_val = FLAGS.dataset_file_name_val
     burst_length = FLAGS.burst_length
 
-    input_stack, gt_image = data_provider.load_batch(dataset_dir = dataset_dir_train, patches_per_img = 2, min_queue=2,
+    demosaic_truth = data_provider.load_batch(dataset_dir = dataset_dir_train, patches_per_img = 2, min_queue=2,
                                     burst_length = burst_length, batch_size=batch_size, repeats=2,
                                     height = height, width = width, to_shift = 1., upscale = 4, jitter = 16, smalljitter = 2)
                                     )
 
-    input_stack_val, gt_image_val = data_provider.load_batch(dataset_dir = dataset_dir_val, patches_per_img = 2, min_queue=2,
-                                    burst_length = burst_length, batch_size=batch_size, repeats=2,
-                                    height = height, width = width, to_shift = 1., upscale = 4, jitter = 16, smalljitter = 2)
-                                    )
+    # input_stack_val, gt_image_val = data_provider.load_batch(dataset_dir = dataset_dir_val, patches_per_img = 2, min_queue=2,
+    #                                 burst_length = burst_length, batch_size=batch_size, repeats=2,
+    #                                 height = height, width = width, to_shift = 1., upscale = 4, jitter = 16, smalljitter = 2)
+    #                                 )
 
+    sig_read = tf.pow(10., tf.random_uniform(
+        [batch, 1, 1, 1], -3., -1.5))
+    sig_shot = tf.pow(10., tf.random_uniform(
+        [batch, 1, 1, 1], -2., -1.))
 
+    truth_all = demosaic_truth
+    dec = demosaic_truth
+    noisy_, _ = add_read_shot_tf(dec, sig_read, sig_shot)
+
+    print ('NOISY', noisy_.get_shape().as_list())
+    print ('DT2', demosaic_truth.get_shape().as_list())
+
+    # noisy = tf.clip_by_value(noisy_, 0.0, 1.0)
+    noisy = noisy_
+
+    # choose first frame as groundtruth
+    demosaic_truth = demosaic_truth[...,0]
+    print ('DT3', demosaic_truth.get_shape().as_list())
+
+    dt = demosaic_truth
+    nt = noisy
+
+    sig_read = tf.tile(
+        sig_read, [1, tf.shape(noisy)[1], tf.shape(noisy)[2], 1])
+    sig_shot = tf.tile(
+        sig_shot, [1, tf.shape(noisy)[1], tf.shape(noisy)[2], 1])
+    sig_tower = tf.concat([sig_shot, sig_read], axis=-1)
+    print ('sig_read shape: ', sig_read.shape)
+    print ('sig_shot shape: ', sig_shot.shape)
+    print ('sig_tower shape: ', sig_tower.shape)
+
+    noisy = tf.placeholder_with_default(
+        noisy, [None, None, None, BURST_LENGTH], name='noisy')
+    dt = tf.placeholder_with_default(dt, [None, None, None], name='dt')
+    sig_tower = tf.placeholder_with_default(
+        (sig_tower), [None, None, None, 2], name='sig_tower')
+
+    tf.add_to_collection('inputs', noisy)
+    tf.add_to_collection('inputs', dt)
+    tf.add_to_collection('inputs', sig_tower)
+    print ('Added to collection')
+
+    sig_shot = sig_tower[..., 0:1]
+    sig_read = sig_tower[..., 1:2]
+
+    sig_read_single_std = tf.sqrt(
+        sig_read**2 + tf.maximum(0., noisy[..., 0:1]) * sig_shot**2)
+    sig_read_dual_params = tf.concat([sig_read, sig_shot], axis=-1)
+    sig_read_empty = tf.zeros_like(noisy[..., 0:0])
+
+    sig_reads = {
+        'singlestd': sig_read_single_std,
+        'dualparams': sig_read_dual_params,
+        'empty': sig_read_empty
+    }
+
+    sig_read = sig_reads[FLAGS.layer_type]
+
+    noisy_sig = tf.concat([noisy, sig_read], axis=-1)
     with tf.variable_scope('generator'):
         if FLAGS.patch_size == 128:
             N_size = 3
         else:
             N_size = 2
-        filts = net.convolve_net(input_stack, final_K, final_W, ch0=64,
+        filts = net.convolve_net(input_stack = noisy_sig, final_K, final_W, ch0=64,
                                  N=N_size, D=3,
                       scope='get_filted', separable=False, bonus=False)
-    gs = tf.Variable(0, name='global_step', trainable=False)
 
-    predict_image = convolve(input_stack, filts, final_K, final_W)
+    gs = tf.Variable(0, name='global_step', trainable=False)
+    predict_image = convolve(noisy, filts, final_K, final_W)
+
+    anneal = FLAGS.anneal
+    if anneal > 0:
+        per_layer = convolve_per_layer(noisy, filts, final_K, final_W)
+        for ii in range(burst_length):
+            itmd = per_layer[..., ii] * burst_length
+
 
     # compute loss
     losses = []

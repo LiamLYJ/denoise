@@ -252,3 +252,66 @@ def convolve_aniso(img_stack, filts, final_Kh, final_Kw, final_W, layerwise=Fals
     # removes the final_K**2*initial_W dimension but keeps final_W
     img_net = tf.reduce_sum(img_stack * filts, axis=-2)
     return img_net
+
+# HDR_PLUS
+
+def rcwindow(N):
+    x = tf.linspace(0., N, N+1)[:-1]
+    rcw = .5 - .5 * tf.cos(2.*np.pi * (x + .5) / N)
+    rcw = tf.reshape(rcw, (N, 1)) * tf.reshape(rcw, (1, N))
+    return rcw
+
+
+def roll_tf(x, shift, axis=0):
+    sh = tf.shape(x)
+    n = sh[axis]
+    shift = shift % n
+    bl0 = tf.concat([sh[:axis], [n-shift], sh[axis+1:]], axis=0)
+    bl1 = tf.concat([sh[:axis], [shift],   sh[axis+1:]], axis=0)
+    or0 = tf.concat([tf.zeros_like(sh[:axis]), [shift],
+                     tf.zeros_like(sh[axis+1:])], axis=0)
+    or1 = tf.zeros_like(bl0)
+    x0 = tf.slice(x, or0, bl0)
+    x1 = tf.slice(x, or1, bl1)
+    return tf.concat([x0, x1], axis=axis)
+
+
+def hdrplus_merge(imgs, N, c, sig):
+    def ccast_tf(x): return tf.complex(x, tf.zeros_like(x))
+
+    # imgs is [batch, h, w, ch]
+    rcw = tf.expand_dims(rcwindow(N), axis=-1)
+    imgs = imgs * rcw
+    imgs = tf.transpose(imgs, [0, 3, 1, 2])
+    imgs_f = tf.fft2d(ccast_tf(imgs))
+    imgs_f = tf.transpose(imgs_f, [0, 2, 3, 1])
+    Dz2 = tf.square(tf.abs(imgs_f[..., 0:1] - imgs_f))
+    Az = Dz2 / (Dz2 + c*sig**2)
+    filt0 = 1 + tf.expand_dims(tf.reduce_sum(Az[..., 1:], axis=-1), axis=-1)
+    filts = tf.concat([filt0, 1 - Az[..., 1:]], axis=-1)
+    output_f = tf.reduce_mean(imgs_f * ccast_tf(filts), axis=-1)
+    output_f = tf.real(tf.ifft2d(output_f))
+
+    return output_f
+
+
+def hdrplus_tiled(noisy, N, sig, c=10**2.25):
+    sh = tf.shape(noisy)[0:3]
+    buffer = tf.zeros_like(noisy[..., 0])
+    allpics = []
+    for i in range(2):
+        for j in range(2):
+            nrolled = roll_tf(roll_tf(noisy, shift=-N//2*i,
+                                      axis=1), shift=-N//2*j, axis=2)
+            hpatches = (tf.transpose(tf.reshape(
+                nrolled, [sh[0], sh[1]//N, N, sh[2]//N, N, -1]), [0, 1, 3, 2, 4, 5]))
+            hpatches = tf.reshape(
+                hpatches, [sh[0]*sh[1]*sh[2]//N**2, N, N, -1])
+            merged = hdrplus_merge(hpatches, N, c, sig)
+            merged = tf.reshape(merged, [sh[0], sh[1]//N, sh[2]//N, N, N])
+            merged = (tf.reshape(tf.transpose(merged, [0, 1, 3, 2, 4]), sh))
+            merged = roll_tf(roll_tf(merged, axis=1, shift=N //
+                                     2*i), axis=2, shift=N//2*j)
+            buffer += merged
+            allpics.append(merged)
+    return buffer

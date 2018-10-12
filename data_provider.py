@@ -15,8 +15,8 @@ from glob import glob
 
 def load_batch(dataset_dir, batch_size, burst_length = 7, repeats =1, height = 128, width= 128, min_queue = 8,
                             to_shift = 1, upscale = 1, jitter=1, smalljitter = 1, shuffle = True, val_head = "None"):
-                            
-    file_names = glob(os.path.join(dataset_dir, '*.tiff'))
+
+    file_names = glob(os.path.join(dataset_dir, '*.png'))
     file_name_queue = tf.train.string_input_producer(file_names)
     _, img_file = tf.WholeFileReader().read(file_name_queue)
     img_pure = tf.image.decode_png(img_file)
