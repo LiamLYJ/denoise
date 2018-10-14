@@ -136,6 +136,29 @@ def train(FLAGS):
     sig_read = sig_reads[FLAGS.layer_type]
 
     noisy_sig = tf.concat([noisy, sig_read], axis=-1)
+
+    # inherit from kpn
+    dumb = {}
+    plots = {}
+    image_summaries = []
+
+    dumb['dumb0'] = nosiy[..., 0]
+    dumb['dumb_avg'] = dumb_avg
+    dhdr = []
+    for i in rnage(batch_size):
+        dhdr.append(hdrplus_tiled(
+                        noisy[i:i+1, ...], N=16, sig=tf.reduce_mean(sig_read_single_std[i, ...]), c=10**2.25))
+    dumb['dumbhdr'] = tf.concat(dhdr, axis = 0)
+
+    #### not sure what it means:
+    m_mask = noisy
+    #########
+    demosaic = {}
+    anneals = {}
+    filters = {}
+
+    d_net = 'dnet-'
+
     with tf.variable_scope('generator'):
         if FLAGS.patch_size == 128:
             N_size = 3
@@ -148,38 +171,69 @@ def train(FLAGS):
     gs = tf.Variable(0, name='global_step', trainable=False)
     predict_image = convolve(noisy, filts, final_K, final_W)
 
+    key = dnet + 's1'
+    demosaic[key] = predict_image
+    filters[key] = filts
+
+    demosaic[key] = demosaic[key][..., 0]
+
     anneal = FLAGS.anneal
     if anneal > 0:
         per_layer = convolve_per_layer(noisy, filts, final_K, final_W)
         for ii in range(burst_length):
             itmd = per_layer[..., ii] * burst_length
+            demosaic[dnet + 'da{}_noshow'.format(ii)] = itmd
+            anneal_coeff = tf.pow(anneal, tf.cast(gs, tf.float32)) * (10. ** (2))
+            anneals[dnet + 'da{}_noshow'.format(ii)] = anneal_coeff
+
+            # tensorboard junk
+            if ii == 0:
+                astr = str(anneal)
+                astr = astr[astr.find('.')+1:]
+                plots = store_plot(
+                    plots, 'anneal/anneal', tf.log(anneal_coeff)/tf.log(10.), 'a{}'.format(astr))
+            if ii < 2:
+                itmd_loss = tf.reduce_mean(
+                    tf.square(sRGBforward(itmd) - sRGBforward(dt)))
+                plots = store_plot(
+                    plots, 'itmds/psnr', -10.*tf.log(itmd_loss)/tf.log(10.), 'da{}'.format(ii))
+
+    d_all_unproc = dict(list(dumb.items()) + list(demosaic.items()))
 
 
-    # compute loss
+    # neccesy hools for evaluating without reconstrcting entire graph
+    for k in d_all_unproc:
+        temp_tensor = tf.identity(d_all_unproc[k], name = k)
+        tf.add_to_collection('output', temp_tensor)
+    #########
+
+
+    for d in dumb:
+        dumb[d] = sRGBforward(dumb[d])
+    for d in demosaic:
+        demosaic[d] = sRGBforward(demosaic[d])
+    dt = sRGBforward(dt)
+
+    # actually calculate image loss
+    d_all = dict(list(dumb.items()) + list(demosaic.items()))
+
     losses = []
-    predict_image_srgb = sRGBforward(predict_image)
-    gt_image_srgb = sRGBforward(gt_image)
-    img_loss = FLAGS.img_loss_weight * basic_img_loss(gt_image_srgb, predict_image_srgb)
-    losses.append(img_loss)
-
+    for d in demosaic:
+        if d.startswith(dnet):
+            print ('LOSSES for ', d)
+            a = 1.0
+            if anneals is not None and d in anneals:
+                a = anneals[d]
+                print ('includes anneal')
+            losses.append(basic_img_loss(demosaic[d], dt) * a)
     slim.losses.add_loss(tf.reduce_sum(tf.stack(losses)))
+
     total_loss = slim.losses.get_total_loss()
 
-    # check val loss
-    predict_image_val = convolve(input_stack_val, filts, final_K, final_W)
-    predict_image_val_srgb = sRGBforward(predict_image_val)
-    gt_image_val_srgb = sRGBforward(gt_image_val)
-    val_loss = basic_img_loss(gt_image_val_srgb, predict_image_val_srgb)
+## TODO ##### leave summaris unfinished
 
-    # summaies
-    input_image_sum = tf.summary.image('input_image', input_image)
-    gt_image_sum = tf.summary.image('gt_image', gt_image)
-    predict_image_sum = tf.summary.image('predict_image', predict_image)
-    total_loss_sum = tf.summary.scalar('total_loss', total_loss)
-    img_loss_sum = tf.summary.scalar('img_loss', img_loss)
+    # sum_total = tf.summary.merge_all()
 
-    sum_total = tf.summary.merge_all()
-    sum_val = tf.summary.scalar('val_loss', val_loss)
 
     # optimizer
     g_vars = tf.get_collection(
@@ -198,8 +252,8 @@ def train(FLAGS):
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
 
-        writer_train = tf.summary.FileWriter(os.path.join(FLAGS.train_log_dir,'train'), sess.graph)
-        writer_val = tf.summary.FileWriter(os.path.join(FLAGS.train_log_dir,'val'), sess.graph)
+        # writer_train = tf.summary.FileWriter(os.path.join(FLAGS.train_log_dir,'train'), sess.graph)
+        # writer_val = tf.summary.FileWriter(os.path.join(FLAGS.train_log_dir,'val'), sess.graph)
 
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
@@ -211,21 +265,20 @@ def train(FLAGS):
             print ('Restoring from', ckpt_path)
             saver.restore(sess, ckpt_path)
 
-
         for i_step in range(max_steps):
-            _, loss, i, sum_total_ = sess.run([train_step_g, total_loss, gs, sum_total])
+            _, loss, i, = sess.run([train_step_g, total_loss, gs)
             if i_step % 5 == 0:
                 print ('Step', i, 'loss =', loss)
 
             if i % FLAGS.save_iter == 0:
                 print ('Saving ckpt at step', i)
                 saver.save(sess, FLAGS.train_log_dir + 'model.ckpt', global_step=i)
-                sum_val_ = sess.run(sum_val)
-                writer_val.add_summary(sum_val_, i)
+                # sum_val_ = sess.run(sum_val)
+                # writer_val.add_summary(sum_val_, i)
 
-            if i % FLAGS.sum_iter == 0:
-                writer_train.add_summary(sum_total_, i)
-                print ('summary saved')
+            # if i % FLAGS.sum_iter == 0:
+            #     writer_train.add_summary(sum_total_, i)
+            #     print ('summary saved')
 
         coord.request_stop()
         coord.join(threads)
