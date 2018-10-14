@@ -18,30 +18,13 @@ flags.DEFINE_integer('patch_size', 128, 'The height/width of images in each batc
 flags.DEFINE_string('train_log_dir', './logs_sony/',
                     'Directory where to write training.')
 
-flags.DEFINE_string('dataset_dir', './data/sony/train/', '')
-
-flags.DEFINE_float('learning_rate', .0001, 'The learning rate')
-
-flags.DEFINE_float('anneal', .9998, 'Anneal rate')
-
-flags.DEFINE_integer('max_number_of_steps', 100000000,
-                     'The maximum number of gradient steps.')
+flags.DEFINE_string('dataset_dir', './data/sony/val/', '')
 
 flags.DEFINE_integer('final_K', 5, 'size of filter')
 # flags.DEFINE_integer('final_K', 1, 'size of filter')
 flags.DEFINE_integer('final_W', 1, 'size of output channel')
 flags.DEFINE_integer('burst_length', 7, 'size of input channel')
 
-flags.DEFINE_integer('save_iter', 500, 'save iter inter')
-
-flags.DEFINE_boolean('h_flip', True, 'horizontal fip')
-flags.DEFINE_boolean('v_flip', True, 'vertical fip')
-flags.DEFINE_float('rotate', 60.0, 'rotate angle')
-flags.DEFINE_float('crop_prob', 0.5, 'crop_probability')
-flags.DEFINE_float('crop_min_percent', 0.3, 'crop min percent' )
-flags.DEFINE_float('crop_max_percent', 1.0, 'crop max percent' )
-
-flags.DEFINE_float('mixup', 0.0, 'mix up for data augmentation')
 flags.DEFINE_string('layer_type', 'singlestd', 'Layers in singlestd.')
 
 

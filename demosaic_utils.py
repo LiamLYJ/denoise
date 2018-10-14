@@ -58,27 +58,27 @@ def tf22reshape1(t):
     return t
 
 
-def tf22reshape2(t, BURST_LENGTH):
+def tf22reshape2(t, burst_length):
     sh = tf.shape(t)
-    t = tf.reshape(t, (sh[0], sh[1], sh[2], BURST_LENGTH, 2, 2))
+    t = tf.reshape(t, (sh[0], sh[1], sh[2], burst_length, 2, 2))
     t = tf.transpose(t, (0, 1, 4, 2, 5, 3))
-    t = tf.reshape(t, (sh[0], sh[1]*2, sh[2]*2, BURST_LENGTH))
+    t = tf.reshape(t, (sh[0], sh[1]*2, sh[2]*2, burst_length))
     return t
 
 
-def full_bayer_stack(bayer, net, BURST_LENGTH):
+def full_bayer_stack(bayer, net, burst_length):
     r = bayer[:, ::2, ::2, :]
     g1 = bayer[:, 1::2, ::2, :]
     g2 = bayer[:, ::2, 1::2, :]
     b = bayer[:, 1::2, 1::2, :]
     R = tf22reshape2(tf.pad(tf.expand_dims(r, axis=-1),
-                            [[0, 0], [0, 0], [0, 0], [0, 0], [0, 3]]), BURST_LENGTH)
+                            [[0, 0], [0, 0], [0, 0], [0, 0], [0, 3]]), burst_length)
     G1 = tf22reshape2(tf.pad(tf.expand_dims(g1, axis=-1),
-                             [[0, 0], [0, 0], [0, 0], [0, 0], [1, 2]]), BURST_LENGTH)
+                             [[0, 0], [0, 0], [0, 0], [0, 0], [1, 2]]), burst_length)
     G2 = tf22reshape2(tf.pad(tf.expand_dims(g2, axis=-1),
-                             [[0, 0], [0, 0], [0, 0], [0, 0], [2, 1]]), BURST_LENGTH)
+                             [[0, 0], [0, 0], [0, 0], [0, 0], [2, 1]]), burst_length)
     B = tf22reshape2(tf.pad(tf.expand_dims(b, axis=-1),
-                            [[0, 0], [0, 0], [0, 0], [0, 0], [3, 0]]), BURST_LENGTH)
+                            [[0, 0], [0, 0], [0, 0], [0, 0], [3, 0]]), burst_length)
     G = G1 + G2
     Rnet = tf22reshape1(net[..., :4])
     Gnet = tf22reshape1(net[..., 4:8])
@@ -87,19 +87,19 @@ def full_bayer_stack(bayer, net, BURST_LENGTH):
     return stack
 
 
-def full_stack(imgs, net, BURST_LENGTH):
-    r = imgs[..., :BURST_LENGTH]
-    g1 = imgs[..., BURST_LENGTH:2*BURST_LENGTH]
-    g2 = imgs[..., 2*BURST_LENGTH:3*BURST_LENGTH]
-    b = imgs[..., 3*BURST_LENGTH:]
+def full_stack(imgs, net, burst_length):
+    r = imgs[..., :burst_length]
+    g1 = imgs[..., burst_length:2*burst_length]
+    g2 = imgs[..., 2*burst_length:3*burst_length]
+    b = imgs[..., 3*burst_length:]
     R = tf22reshape2(tf.pad(tf.expand_dims(r, axis=-1),
-                            [[0, 0], [0, 0], [0, 0], [0, 0], [0, 3]]), BURST_LENGTH)
+                            [[0, 0], [0, 0], [0, 0], [0, 0], [0, 3]]), burst_length)
     G1 = tf22reshape2(tf.pad(tf.expand_dims(g1, axis=-1),
-                             [[0, 0], [0, 0], [0, 0], [0, 0], [1, 2]]), BURST_LENGTH)
+                             [[0, 0], [0, 0], [0, 0], [0, 0], [1, 2]]), burst_length)
     G2 = tf22reshape2(tf.pad(tf.expand_dims(g2, axis=-1),
-                             [[0, 0], [0, 0], [0, 0], [0, 0], [2, 1]]), BURST_LENGTH)
+                             [[0, 0], [0, 0], [0, 0], [0, 0], [2, 1]]), burst_length)
     B = tf22reshape2(tf.pad(tf.expand_dims(b, axis=-1),
-                            [[0, 0], [0, 0], [0, 0], [0, 0], [3, 0]]), BURST_LENGTH)
+                            [[0, 0], [0, 0], [0, 0], [0, 0], [3, 0]]), burst_length)
     G = G1 + G2
     Rnet = tf22reshape1(net[..., :4])
     Gnet = tf22reshape1(net[..., 4:8])
