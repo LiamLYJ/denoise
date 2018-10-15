@@ -280,11 +280,16 @@ def psnr_tf_batch_col_safe(estimate, truth):
     return tf.reduce_sum(-10. * tf.log(msq) / tf.log(10.)) / denom
 
 
-def add_read_shot_tf(truth, sig_read, sig_shot):
-    read = sig_read * tf.random_normal(tf.shape(truth))
-    shot = tf.sqrt(truth) * sig_shot * tf.random_normal(tf.shape(truth))
-    noisy = truth + shot + read
-    return noisy, batch_down2(tf.sqrt(noisy * sig_shot ** 2 + sig_read ** 2))
+def add_read_shot_tf(truth, sig_read, sig_shot, use_profile = False):
+    if use_profile:
+        tmp_noise = tf.sqrt((sig_read * tf.ones_like(truth) + truth * sig_shot)) * tf.random_normal(tf.shape(truth))
+        noisy = tmp_noise + truth
+        return noisy
+    else:
+        read = sig_read * tf.random_normal(tf.shape(truth))
+        shot = tf.sqrt(truth) * sig_shot * tf.random_normal(tf.shape(truth))
+        noisy = truth + shot + read
+        return noisy, batch_down2(tf.sqrt(noisy * sig_shot ** 2 + sig_read ** 2))
 
 
 def add_read_shot22_tf(truth, sig_read, sig_shot):

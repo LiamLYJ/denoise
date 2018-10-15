@@ -15,6 +15,46 @@ import matplotlib.pyplot as plt
 import cv2
 import json
 from glob import glob
+from scipy.misc import imsave
+
+
+def np_load_batch():
+    pass
+
+def crop_in_order(file_names, save_dir, crop_size):
+    size_list = [] # contan 'box_h' and 'box_w' for each file
+    for file_name in file_names:
+        cur_name = file_name.split('/')[-1][:-4]
+        raw_input = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
+        # raw_input = raw_input[0:128*5, 0:128*5]
+        raw_h, raw_w = raw_input.shape
+        box_h = raw_h // crop_size
+        box_w = raw_w // crop_size
+        crop_h = box_h * crop_size
+        crop_w = box_w * crop_size
+        raw_crop = raw_input[0:crop_h, 0:crop_w]
+        item_size = {'w':box_w, 'h':box_h}
+        size_list.append(item_size)
+        for j in range(box_h):
+            for i in range(box_w):
+                cur_crop = raw_crop[j*crop_size:(j+1)*crop_size, i*crop_size:(i+1)*crop_size]
+                imsave(os.path.join(save_dir, cur_name + '_%03d_%03d.png'%(j, i)), cur_crop)
+    return size_list
+
+def assem_in_order(input_list, box_size):
+    return_list = []
+    box_h = box_size['h']
+    box_w = box_size['w']
+    for item in input_list:
+        assert (len(item) == box_h * box_w)
+        patch_h, patch_w = np.squeeze(item[0]).shape
+        assem_item = np.ones([int(box_h * patch_h), int(box_w * patch_w)])
+        for cur_index, cur_patch in enumerate(item):
+            pos_h = cur_index // box_w
+            pos_w = cur_index % box_w
+            assem_item[pos_h*patch_h:(pos_h+1)*patch_h, pos_w*patch_w:(pos_w+1)*patch_w] = cur_patch
+        return_list.append(assem_item)
+    return return_list
 
 def prcocess_tiff(s_dir, d_dir_train, d_dir_val, bl = 200, wl = 3840):
     file_names = glob(os.path.join(s_dir, '*.tiff'))
@@ -30,7 +70,6 @@ def prcocess_tiff(s_dir, d_dir_train, d_dir_val, bl = 200, wl = 3840):
             save_name = os.path.join(d_dir_val, file_name.split('/')[-1][:-5] + '.png')
         # print (save_name)
         cv2.imwrite(save_name, img)
-
 
 def batch_stable_process(img_batch, use_crop, use_clip, use_flip, use_rotate, use_noise):
     b,h,w,_ = img_batch.shape
@@ -129,11 +168,28 @@ def special_downsampling(img, scale):
 
 
 if __name__ == '__main__':
-    s_dir = '../Downloads/Sony'
-    d_dir_train = './data/sony/train'
-    d_dir_val = './data/sony/val'
-    if not os.path.exists(d_dir_train):
-        os.mkdir(d_dir_train)
-    if not os.path.exists(d_dir_val):
-        os.mkdir(d_dir_val)
-    prcocess_tiff(s_dir, d_dir_train, d_dir_val)
+    # s_dir = '../Downloads/Sony'
+    # d_dir_train = './data/sony/train'
+    # d_dir_val = './data/sony/val'
+    # if not os.path.exists(d_dir_train):
+    #     os.mkdir(d_dir_train)
+    # if not os.path.exists(d_dir_val):
+    #     os.mkdir(d_dir_val)
+    # prcocess_tiff(s_dir, d_dir_train, d_dir_val)
+
+    dataset_dir = './data/sony/val'
+    file_names = glob(os.path.join(dataset_dir, '*.png'))
+    file_names = sorted(file_names)[0:1]
+    save_dir = './tmp'
+    crop_size = 1000
+    size_list = crop_in_order(file_names, save_dir, crop_size)
+    print (size_list)
+    file_names = glob('./tmp/*.png')
+    file_names = sorted(file_names)
+    print (file_names)
+    ttt = []
+    for i in file_names:
+        ttt.append(cv2.imread(i, cv2.IMREAD_UNCHANGED))
+    tmp = assemin_order([ttt], size_list[0])
+    imsave('ttt.png', tmp[0])
+    print (tmp[0].shape)

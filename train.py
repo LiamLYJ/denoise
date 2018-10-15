@@ -15,7 +15,7 @@ flags.DEFINE_integer('batch_size', 4, 'The number of images in each batch.')
 
 flags.DEFINE_integer('patch_size', 128, 'The height/width of images in each batch.')
 
-flags.DEFINE_string('train_log_dir', './logs_sony/',
+flags.DEFINE_string('train_log_dir', './logs/',
                     'Directory where to write training.')
 
 flags.DEFINE_string('dataset_dir', './data/sony/train/', '')
@@ -28,7 +28,6 @@ flags.DEFINE_integer('max_number_of_steps', 100000000,
                      'The maximum number of gradient steps.')
 
 flags.DEFINE_integer('final_K', 5, 'size of filter')
-# flags.DEFINE_integer('final_K', 1, 'size of filter')
 flags.DEFINE_integer('final_W', 1, 'size of output channel')
 flags.DEFINE_integer('burst_length', 7, 'size of input channel')
 
@@ -44,6 +43,12 @@ flags.DEFINE_float('crop_max_percent', 1.0, 'crop max percent' )
 flags.DEFINE_float('mixup', 0.0, 'mix up for data augmentation')
 flags.DEFINE_string('layer_type', 'singlestd', 'Layers in singlestd.')
 
+#noise profile
+flags.DEFINE_float('read_noise', 0.000000483, 'read noise from noise profile')
+flags.DEFINE_float('shot_noise', 0.00059, 'shot noise from noise profile')
+
+#choose specific channel
+flags.DEFINE_string('select_ch', None, 'choose which channel to process')
 
 FLAGS = flags.FLAGS
 
@@ -55,8 +60,10 @@ def train(FLAGS):
     burst_length = FLAGS.burst_length
     dataset_dir = os.path.join(FLAGS.dataset_dir)
     burst_length = FLAGS.burst_length
+    select_ch = FLAGS.select_ch
 
-    demosaic_truth = data_provider.load_batch(dataset_dir = dataset_dir, batch_size=batch_size, patches_per_img = 2, min_queue=2,
+    demosaic_truth = data_provider.load_batch(dataset_dir = dataset_dir, batch_size=batch_size, select_ch=select_ch,
+                                    patches_per_img = 2, min_queue=2,
                                     burst_length = burst_length,  repeats=2, height = height,
                                     width = width, to_shift = 1., upscale = 1, jitter = 16, smalljitter = 2,
                                     )
@@ -64,14 +71,19 @@ def train(FLAGS):
     # shrinlk batcsize, h,w,1,burst_length to batch_size, h,w, burst_length
     demosaic_truth = tf.reduce_mean(demosaic_truth, axis=-2)
 
-    sig_read = tf.pow(10., tf.random_uniform(
-        [batch_size, 1, 1, 1], -3., -1.5))
-    sig_shot = tf.pow(10., tf.random_uniform(
-        [batch_size, 1, 1, 1], -2., -1.))
+    # use noise randomly
+    # sig_read = tf.pow(10., tf.random_uniform(
+    #     [batch_size, 1, 1, 1], -3., -1.5))
+    # sig_shot = tf.pow(10., tf.random_uniform(
+    #     [batch_size, 1, 1, 1], -2., -1.))
+
+    sig_read = FLAGS.read_noise * tf.ones([batch_size, 1, 1, 1])
+    sig_shot = FLAGS.shot_noise * tf.ones([batch_size, 1, 1, 1])
 
     truth_all = demosaic_truth
     dec = demosaic_truth
-    noisy_, _ = add_read_shot_tf(dec, sig_read, sig_shot)
+    noisy_ = add_read_shot_tf(dec, sig_read, sig_shot, use_profile = True)
+    # noisy_, _ = add_read_shot_tf(dec, sig_read, sig_shot)
 
     print ('NOISY', noisy_.get_shape().as_list())
     print ('DT2', demosaic_truth.get_shape().as_list())
