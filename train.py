@@ -30,6 +30,7 @@ flags.DEFINE_integer('max_number_of_steps', 100000000,
 flags.DEFINE_integer('final_K', 5, 'size of filter')
 flags.DEFINE_integer('final_W', 1, 'size of output channel')
 flags.DEFINE_integer('burst_length', 7, 'size of input channel')
+flags.DEFINE_integer('tile_scale', 4, 'scale of raw and input channel wise')
 
 flags.DEFINE_integer('save_iter', 500, 'save iter inter')
 
@@ -46,9 +47,10 @@ flags.DEFINE_string('layer_type', 'singlestd', 'Layers in singlestd.')
 #noise profile
 flags.DEFINE_float('read_noise', 0.000000483, 'read noise from noise profile')
 flags.DEFINE_float('shot_noise', 0.00059, 'shot noise from noise profile')
+flags.DEFINE_float('reg_weight', 0.001, 'weight loss for filt reg')
 
 #choose specific channel
-flags.DEFINE_string('select_ch', None, 'choose which channel to process')
+flags.DEFINE_string('select_ch', 'R', 'choose which channel to process')
 
 FLAGS = flags.FLAGS
 
@@ -61,10 +63,11 @@ def train(FLAGS):
     dataset_dir = os.path.join(FLAGS.dataset_dir)
     burst_length = FLAGS.burst_length
     select_ch = FLAGS.select_ch
+    tile_scale = FLAGS.tile_scale
 
     demosaic_truth = data_provider.load_batch(dataset_dir = dataset_dir, batch_size=batch_size, select_ch=select_ch,
                                     patches_per_img = 2, min_queue=2,
-                                    burst_length = burst_length,  repeats=2, height = height,
+                                    burst_length = burst_length, tile_scale=tile_scale, repeats=2, height = height,
                                     width = width, to_shift = 1., upscale = 1, jitter = 16, smalljitter = 2,
                                     )
 
@@ -222,6 +225,7 @@ def train(FLAGS):
                 a = anneals[d]
                 print ('includes anneal')
             losses.append(basic_img_loss(demosaic[d], dt) * a)
+    losses.append(filt_reg_loss(filts, final_K, burst_length, final_W, FLAGS.reg_weight))
     slim.losses.add_loss(tf.reduce_sum(tf.stack(losses)))
 
     total_loss = slim.losses.get_total_loss()

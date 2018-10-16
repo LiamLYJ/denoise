@@ -56,6 +56,30 @@ def assem_in_order(input_list, box_size):
         return_list.append(assem_item)
     return return_list
 
+
+# self-designed resize 
+def tile_resize(img, scale, is_up, not_batch = False):
+    if not_batch:
+        img = np.expand_dims(img, axis = 0)
+    while (scale  > 1):
+        img = batch_up2(img) if is_up else batch_down2(img)
+        scale /= 2
+    return np.squeeze(img, axis =0) if not_batch else img
+
+# batch Upsample
+def batch_up2(img):
+    img_tile = np.tile(img, [1,2,2,1])
+    img_tile[:, ::2, ::2, ...] = img
+    img_tile[:, 1::2, ::2, ...] = img
+    img_tile[:, ::2, 1::2, ...] = img
+    img_tile[:, 1::2, 1::2, ...] = img
+    return img_tile
+
+# batch Downsample
+def batch_down2(img):
+    return (img[:, ::2, ::2, ...]+img[:, 1::2, ::2, ...]+img[:, ::2, 1::2, ...]+img[:, 1::2, 1::2, ...])/4
+
+
 def prcocess_tiff(s_dir, d_dir_train, d_dir_val, bl = 200, wl = 3840):
     file_names = glob(os.path.join(s_dir, '*.tiff'))
     for file_name in file_names:

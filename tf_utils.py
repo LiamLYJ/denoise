@@ -5,6 +5,19 @@ import random
 import math
 
 
+# prepare for data loader
+def select_raw(img_pure, select_ch):
+    if select_ch is 'R':
+        img = img_pure[0::2, 0::2]
+    elif select_ch is 'RG':
+        img = img_pure[0::2, 1::2]
+    elif select_ch is 'GB':
+        img = img_pure[1::2, 0::2]
+    elif select_ch is 'B':
+        img = img_pure[1::2, 1::2]
+    else:
+        raise ValueError('oops!, wrong select_ch: %s'%(select_ch))
+    return img
 
 def make_stack_hqjitter(image, height, width, depth, burst_length, to_shift, upscale, jitter):
     j_up = jitter * upscale
@@ -56,8 +69,7 @@ def make_batch_hqjitter(patches, burst_length, batch_size, repeats, height, widt
     return batch
 
 
-
-
+# sRGB convertion
 def sRGBforward(x):
     b = .0031308
     gamma = 1./2.4
@@ -73,6 +85,20 @@ def sRGBforward(x):
     srgb = tf.where(x > 1, k1*x-k1+1, srgb)
     return srgb
 
+# self_designed resize
+def tile_resize(img, scale, is_up, not_batch = False):
+    if not_batch:
+        img = tf.expand_dims(img, axis = 0)
+    while (scale  > 1):
+        img = batch_up2(img) if is_up else batch_down2(img)
+        scale /= 2
+    return tf.squeeze(img, axis =0) if not_batch else img
+
+# batch Upsample
+def batch_up2(img):
+    img_tile = tf.concat([img, img], axis = 1)
+    img_tile = tf.concat([img_tile, img_tile], axis = 2)
+    return img_tile
 
 # batch Downsample
 def batch_down2(img):
@@ -94,6 +120,14 @@ def basic_img_loss(img, truth):
     l1_grad = gradient_loss(img, truth)
     return l2_pixel + l1_grad
 
+def filt_reg_loss(filts, final_K, initial_W, final_W, weight):
+    weight = max(0.0, weight)
+    fsh = tf.shape(filts)
+    filts = tf.reshape(filts, [fsh[0], fsh[1], fsh[2], final_K ** 2 * initial_W, final_W])
+    target = tf.ones([fsh[1], fsh[2], final_W])
+    filts_sum = tf.reduce_sum(filts,axis = [3])
+    loss = tf.reduce_mean(tf.abs(target - filts_sum))
+    return loss * weight
 
 def convolve(img_stack, filts, final_K, final_W):
     initial_W = img_stack.get_shape().as_list()[-1]
