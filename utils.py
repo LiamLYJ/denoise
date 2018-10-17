@@ -21,11 +21,16 @@ from scipy.misc import imsave
 def np_load_batch():
     pass
 
-def crop_in_order(file_names, save_dir, crop_size):
+def crop_in_order(file_names, save_dir, crop_size, with_data = False):
+    # file_names shold be a list
     size_list = [] # contan 'box_h' and 'box_w' for each file
+    data = []
     for file_name in file_names:
         cur_name = file_name.split('/')[-1][:-4]
-        raw_input = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
+        if 'npy' in file_name:
+            raw_input = np.load(file_name)
+        else:
+            raw_input = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
         # raw_input = raw_input[0:128*5, 0:128*5]
         raw_h, raw_w = raw_input.shape
         box_h = raw_h // crop_size
@@ -35,11 +40,16 @@ def crop_in_order(file_names, save_dir, crop_size):
         raw_crop = raw_input[0:crop_h, 0:crop_w]
         item_size = {'w':box_w, 'h':box_h}
         size_list.append(item_size)
+        tmp_crop = []
         for j in range(box_h):
             for i in range(box_w):
                 cur_crop = raw_crop[j*crop_size:(j+1)*crop_size, i*crop_size:(i+1)*crop_size]
-                imsave(os.path.join(save_dir, cur_name + '_%03d_%03d.png'%(j, i)), cur_crop)
-    return size_list
+                tmp_crop.append(cur_crop)
+                if not save_dir is None:
+                    imsave(os.path.join(save_dir, cur_name + '_%03d_%03d.png'%(j, i)), cur_crop)
+        tmp_crop = np.stack(tmp_crop, axis=0)
+        data.append(tmp_crop)
+    return data, size_list if with_data else size_list
 
 def assem_in_order(input_list, box_size):
     return_list = []
@@ -55,29 +65,6 @@ def assem_in_order(input_list, box_size):
             assem_item[pos_h*patch_h:(pos_h+1)*patch_h, pos_w*patch_w:(pos_w+1)*patch_w] = cur_patch
         return_list.append(assem_item)
     return return_list
-
-
-# self-designed resize 
-def tile_resize(img, scale, is_up, not_batch = False):
-    if not_batch:
-        img = np.expand_dims(img, axis = 0)
-    while (scale  > 1):
-        img = batch_up2(img) if is_up else batch_down2(img)
-        scale /= 2
-    return np.squeeze(img, axis =0) if not_batch else img
-
-# batch Upsample
-def batch_up2(img):
-    img_tile = np.tile(img, [1,2,2,1])
-    img_tile[:, ::2, ::2, ...] = img
-    img_tile[:, 1::2, ::2, ...] = img
-    img_tile[:, ::2, 1::2, ...] = img
-    img_tile[:, 1::2, 1::2, ...] = img
-    return img_tile
-
-# batch Downsample
-def batch_down2(img):
-    return (img[:, ::2, ::2, ...]+img[:, 1::2, ::2, ...]+img[:, ::2, 1::2, ...]+img[:, 1::2, 1::2, ...])/4
 
 
 def prcocess_tiff(s_dir, d_dir_train, d_dir_val, bl = 200, wl = 3840):

@@ -14,22 +14,23 @@ import data_provider
 from demosaic_utils import *
 import utils
 
+flags.DEFINE_integer('batch_size', 64, 'The number of images in each batch.')
 flags.DEFINE_integer('patch_size', 128, 'The height/width of images in each batch.')
 
-flags.DEFINE_string('ckpt_dir', './logs/',
+flags.DEFINE_string('ckpt_dir', './logs_profile/',
                     'Directory where to write training.')
 
-flags.DEFINE_string('dataset_dir', './data/sony/val/', 'where the data is ')
+# flags.DEFINE_string('dataset_dir', './data/sony/val/', 'where the data is ')
+flags.DEFINE_string('dataset_dir', './data/real_test/', 'where the data is ')
 flags.DEFINE_integer('iter_num', 10, 'how many iter to run in test, in not use_fully_crop mode')
 
-flags.DEFINE_string('mode', 'fast', 'normal, fast, fully_crop')
+flags.DEFINE_string('mode', 'fully_crop', 'normal, fully_crop')
 flags.DEFINE_string('itmd_dir', './itmd_save', 'itermediate path for saveing crop input data')
 flags.DEFINE_integer('collect_num', 1, 'how many number to collect')
 
 flags.DEFINE_integer('final_K', 5, 'size of filter')
 flags.DEFINE_integer('final_W', 1, 'size of output channel')
 flags.DEFINE_integer('burst_length', 7, 'size of input channel')
-flags.DEFINE_integer('tile_scale', 4, 'scale of raw and input channel wise')
 
 flags.DEFINE_string('layer_type', 'singlestd', 'Layers in singlestd.')
 flags.DEFINE_string('save_path', './save_path', '')
@@ -38,11 +39,11 @@ flags.DEFINE_float('read_noise', 0.000000483, 'read noise from noise profile')
 flags.DEFINE_float('shot_noise', 0.00059, 'shot noise from noise profile')
 
 #choose specific channel
-flags.DEFINE_string('select_ch', 'R', 'choose which channel to process')
+flags.DEFINE_string('select_ch', None, 'choose which channel to process')
 
 FLAGS = flags.FLAGS
 
-def test(FLAGS):
+def test_fake(FLAGS):
     mode = FLAGS.mode
     batch = 1
     height = width = FLAGS.patch_size
@@ -53,7 +54,6 @@ def test(FLAGS):
     burst_length = FLAGS.burst_length
     ckpt_dir = FLAGS.ckpt_dir
     select_ch = FLAGS.select_ch
-    tile_scale = FLAGS.tile_scale
 
     size_list = []
     tmp_dataset_dir = dataset_dir
@@ -69,13 +69,10 @@ def test(FLAGS):
         # size_list : every one with box_h, and box_w
         size_list = utils.crop_in_order(file_names, FLAGS.itmd_dir, FLAGS.patch_size)
         tmp_dataset_dir = FLAGS.itmd_dir
-    if mode is 'fast':
-        assert (not FLAGS.select_ch is None)
-        keep_size = True
 
     truth = data_provider.load_batch(dataset_dir = tmp_dataset_dir, batch_size=1, select_ch=select_ch,
                                     patches_per_img = 1, min_queue=1,
-                                    burst_length = burst_length, tile_scale=tile_scale, repeats=1, height = height,
+                                    burst_length = burst_length, repeats=1, height = height,
                                     width = width, to_shift = 1., upscale = 1, jitter = 16, smalljitter = 2, shuffle = False,
                                     keep_size = keep_size,
                                     )
@@ -135,24 +132,11 @@ def test(FLAGS):
         else:
             N_size = 2
 
-        # in mode fast: save original big image
-        if mode is 'fast':
-            # only allow for final_K == 1
-            # assert (final_K == 1)
-            # save the original size of input
-            ori_noisy = tf.identity(noisy)
-            noisy = tile_resize(noisy, tile_scale, is_up =False)
-            noisy_sig = tile_resize(noisy_sig, tile_scale, is_up=False)
-
         filts = net.convolve_net(input_stack = noisy_sig, noisy_input=noisy, final_K = final_K, final_W = final_W, ch0=64,
                                  N=N_size, D=3,
                       scope='get_filted', separable=False, bonus=False)
 
-    if mode is 'fast':
-        filts_big = tile_resize(filts, tile_scale, is_up = True)
-        predict_image = convolve(ori_noisy, filts_big, final_K, final_W)
-    else:
-        predict_image = convolve(noisy, filts, final_K, final_W)
+    predict_image = convolve(noisy, filts, final_K, final_W)
     demosaic[key] = predict_image
     demosaic[key] = demosaic[key][..., 0]
 
@@ -206,26 +190,106 @@ def test(FLAGS):
                 imsave(os.path.join(FLAGS.save_path, '%04d_'%(i_step) + '_input.png'), noisy_input[0])
                 sref_results.append(sref_result)
                 print ('ssim: ', sref_result)
-
-        elif mode is 'fast':
-            for i_step in range(FLAGS.iter_num):
-                big_filted, big_noisy_input, big_gt, sref_result = sess.run(
-                    [demosaic[key], ori_noisy[..., 0], truth, sref])
-                imsave(os.path.join(FLAGS.save_path,'%04d_'%(i_step) + '_gt.png'), big_gt[0])
-                imsave(os.path.join(FLAGS.save_path, '%04d_'%(i_step) + '_after_filt.png'), big_filted[0])
-                imsave(os.path.join(FLAGS.save_path, '%04d_'%(i_step) + '_input.png'), big_noisy_input[0])
-                sref_results.append(sref_result)
-                print ('ssim: ', sref_result)
         else:
             raise ValueError('wrong flag mode: %s'%(mode))
     coord.request_stop()
-    coord.join(threads)
+    # coord.join(threads)
 
+# regard inpy with one big image
+def test_real(FLAGS):
+    mode = FLAGS.mode
+    batch = FLAGS.batch_size
+    final_W = FLAGS.final_W
+    final_K = FLAGS.final_K
+    crop_size = FLAGS.patch_size
+    burst_length = FLAGS.burst_length
+    dataset_dir = os.path.join(FLAGS.dataset_dir)
+    burst_length = FLAGS.burst_length
+    ckpt_dir = FLAGS.ckpt_dir
+
+    # forward the net
+    dnet = 'dnet-'
+    demosaic = {}
+
+    noisy = tf.placeholder( tf.float32, shape = [None, None, None, burst_length], name ='noisy')
+    dynamic_batch = tf.placeholder(tf.int32, name = 'dynamic_batch')
+    sig_read = FLAGS.read_noise * tf.ones([dynamic_batch, 1,1,1])
+    sig_shot = FLAGS.shot_noise * tf.ones([dynamic_batch, 1,1,1])
+
+    # prepare for concating feed with noise level
+    sig_read = tf.tile(
+        sig_read, [1, tf.shape(noisy)[1], tf.shape(noisy)[2], 1])
+    sig_shot = tf.tile(
+        sig_shot, [1, tf.shape(noisy)[1], tf.shape(noisy)[2], 1])
+    sig_tower = tf.concat([sig_shot, sig_read], axis=-1)
+    # sig_tower = tf.placeholder_with_default(
+    #     (sig_tower), [None, None, None, 2], name='sig_tower')
+
+    sig_shot = sig_tower[..., 0:1]
+    sig_read = sig_tower[..., 1:2]
+    sig_read_single_std = tf.sqrt(sig_read**2 + tf.maximum(0., noisy[..., 0:1]) * sig_shot**2)
+    sig_read_dual_params = tf.concat([sig_read, sig_shot], axis=-1)
+    sig_read_empty = tf.zeros_like(noisy[..., 0:0])
+
+    sig_reads = {
+        'singlestd': sig_read_single_std,
+        'dualparams': sig_read_dual_params,
+        'empty': sig_read_empty
+    }
+    sig_read = sig_reads['singlestd']
+
+    with tf.variable_scope('generator'):
+        noisy_sig = tf.concat([noisy,sig_read], axis = -1)
+        key = dnet + 's1'
+        if FLAGS.patch_size == 128:
+            N_size = 3
+        else:
+            N_size = 2
+
+        filts = net.convolve_net(input_stack = noisy_sig, noisy_input=noisy, final_K = final_K, final_W = final_W, ch0=64,
+                                 N=N_size, D=3,
+                      scope='get_filted', separable=False, bonus=False)
+
+    predict_image = convolve(noisy, filts, final_K, final_W)
+    demosaic[key] = predict_image
+    demosaic[key] = demosaic[key][..., 0]
+
+    with tf.Session() as sess:
+        saver = tf.train.Saver()
+        tmp_ckpt_path = tf.train.latest_checkpoint(ckpt_dir)
+        saver.restore(sess, tmp_ckpt_path)
+        print ('succes load model')
+
+        assert (mode is 'fully_crop')
+
+        real_patches, size = data_provider.load_batch_real(dataset_dir=dataset_dir, crop_size = crop_size, burst_length = burst_length )
+        num_iter = real_patches.shape[0] // batch
+        remain = real_patches.shape[0] % batch
+        print ('num of iter:', num_iter)
+        print ('num of remain: ', remain)
+
+        after_filts = []
+        for iter in range(num_iter):
+            if iter % 5 == 0:
+                print ('processing..', 'iter: ', iter)
+            after_filt = sess.run(demosaic[key], feed_dict = {noisy: real_patches[iter*batch:(iter+1)*batch, ...],
+                                                                dynamic_batch: batch})
+            after_filts.append(after_filt)
+        if remain > 0:
+            print ('processing remianing..')
+            after_filt = sess.run(demosaic[key], feed_dict = {noisy: real_patches[num_iter*batch:, ...],
+                                                                dynamic_batch: remain})
+            after_filts.append(after_filt)
+        output = np.concatenate(after_filts, axis = 0)
+        output = utils.assem_in_order([output], size)
+        np.save(os.path.join(FLAGS.save_path, 'output.npy'), output[0])
+        imsave(os.path.join(FLAGS.save_path, 'output.png'), output[0])
 
 def main(_):
     if not gfile.Exists(FLAGS.save_path):
         gfile.MakeDirs(FLAGS.save_path)
-    test(FLAGS)
+    # test_fake(FLAGS)
+    test_real(FLAGS)
 
 if __name__ == '__main__':
     app.run()

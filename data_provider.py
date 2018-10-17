@@ -1,5 +1,6 @@
 import os
 import tensorflow as tf
+import numpy as np
 slim = tf.contrib.slim
 dataset_data_provider = slim.dataset_data_provider
 dataset = slim.dataset
@@ -12,11 +13,22 @@ from tensorflow.python.framework import dtypes
 from tf_utils import *
 from utils import *
 from glob import glob
+import cv2
+
+# regard as only test for one raw
+def load_batch_real(dataset_dir, crop_size, format = '*.npy', burst_length = 7):
+    file_names = glob(os.path.join(dataset_dir, format))
+    file_names = sorted(file_names)
+    assert(len(file_names) == burst_length)
+    patches_data, size_list = crop_in_order(file_names, save_dir=None, crop_size=crop_size, with_data = True)
+    patches = np.stack(patches_data, axis = -1)
+    # return (b ,w ,h , burst_length), ('w:' 'h:')
+    return patches, size_list[0]
 
 
 # the training dats has the bayer pattern of RGGB
 def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_length = 7, repeats =1, height = 128, width= 128, min_queue = 8,
-                            to_shift = 1, upscale = 1, jitter=1, smalljitter = 1, tile_scale = 4, shuffle = True, keep_size = False, ):
+                            to_shift = 1, upscale = 1, jitter=1, smalljitter = 1, shuffle = True, keep_size = False, ):
 
     file_names = glob(os.path.join(dataset_dir, '*.png'))
     file_names = sorted(file_names)
@@ -29,15 +41,12 @@ def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_le
     if select_ch is None:
         img = tf.random_crop(img_pure, size = [height, width, 1])
     else:
-        # default is crop image_pure with scale of 16 /4 (RGGB) = 5
-        # img_pure = tf.image.crop_to_bounding_box(img_pure, 0,0, height * 20, width*20)
-        img_pure = tf.random_crop(img_pure, size = [height *4 * tile_scale, width * 4 *tile_scale, 1])
+        # 20 need to be n times of 4 (RGGB)
+        img_pure = tf.image.crop_to_bounding_box(img_pure, 0,0, height * 20, width*20)
 
         img = select_raw(img_pure, select_ch)
         if not keep_size:
-            # img = tf.image.resize_images(img, size = [height, width], method = tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-            # use the careful design downsampling
-            img = tile_resize(img, tile_scale, is_up=False, not_batch = True)
+            img = tf.random_crop(img_pure, size = [height, width, 1])
 
     height_next, width_next = img.get_shape().as_list()[0], img.get_shape().as_list()[1]
     patches = make_stack_hqjitter((tf.cast(img, tf.float32) / 255.),
@@ -69,4 +78,7 @@ def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_le
 
 
 if __name__ == '__main__':
-    pass
+    dataset_dir = './real_test'
+    crop_size = 128
+    patches, size = load_batch_real(dataset_dir, crop_size=crop_size)
+    print (patches.shape)

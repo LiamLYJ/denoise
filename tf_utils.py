@@ -85,20 +85,6 @@ def sRGBforward(x):
     srgb = tf.where(x > 1, k1*x-k1+1, srgb)
     return srgb
 
-# self_designed resize
-def tile_resize(img, scale, is_up, not_batch = False):
-    if not_batch:
-        img = tf.expand_dims(img, axis = 0)
-    while (scale  > 1):
-        img = batch_up2(img) if is_up else batch_down2(img)
-        scale /= 2
-    return tf.squeeze(img, axis =0) if not_batch else img
-
-# batch Upsample
-def batch_up2(img):
-    img_tile = tf.concat([img, img], axis = 1)
-    img_tile = tf.concat([img_tile, img_tile], axis = 2)
-    return img_tile
 
 # batch Downsample
 def batch_down2(img):
