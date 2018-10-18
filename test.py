@@ -17,11 +17,11 @@ import utils
 flags.DEFINE_integer('batch_size', 64, 'The number of images in each batch.')
 flags.DEFINE_integer('patch_size', 128, 'The height/width of images in each batch.')
 
-flags.DEFINE_string('ckpt_dir', './logs_profile/',
+flags.DEFINE_string('ckpt_dir', './logs/',
                     'Directory where to write training.')
 
 # flags.DEFINE_string('dataset_dir', './data/sony/val/', 'where the data is ')
-flags.DEFINE_string('dataset_dir', './data/real_test/', 'where the data is ')
+flags.DEFINE_string('dataset_dir', './data/real_test_day/', 'where the data is ')
 flags.DEFINE_integer('iter_num', 10, 'how many iter to run in test, in not use_fully_crop mode')
 
 flags.DEFINE_string('mode', 'fully_crop', 'normal, fully_crop')
@@ -282,8 +282,8 @@ def test_real(FLAGS):
             after_filts.append(after_filt)
         output = np.concatenate(after_filts, axis = 0)
         output = utils.assem_in_order([output], size)
-        np.save(os.path.join(FLAGS.save_path, 'output.npy'), output[0])
-        imsave(os.path.join(FLAGS.save_path, 'output.png'), output[0])
+        np.save(os.path.join(FLAGS.save_path, 'output_day.npy'), output[0])
+        imsave(os.path.join(FLAGS.save_path, 'output_day.png'), output[0])
 
 def main(_):
     if not gfile.Exists(FLAGS.save_path):
