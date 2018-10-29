@@ -15,7 +15,7 @@ flags.DEFINE_integer('batch_size', 4, 'The number of images in each batch.')
 
 flags.DEFINE_integer('patch_size', 128, 'The height/width of images in each batch.')
 
-flags.DEFINE_string('train_log_dir', './logs/',
+flags.DEFINE_string('train_log_dir', './logs_upscale_4/',
                     'Directory where to write training.')
 
 flags.DEFINE_string('dataset_dir', './data/sony/train/', '')
@@ -66,7 +66,7 @@ def train(FLAGS):
     demosaic_truth = data_provider.load_batch(dataset_dir = dataset_dir, batch_size=batch_size, select_ch=select_ch,
                                     patches_per_img = 2, min_queue=2,
                                     burst_length = burst_length, repeats=2, height = height,
-                                    width = width, to_shift = 1., upscale = 1, jitter = 16, smalljitter = 2,
+                                    width = width, to_shift = 1., upscale = 4, jitter = 16, smalljitter = 2,
                                     )
 
     # shrinlk batcsize, h,w,1,burst_length to batch_size, h,w, burst_length

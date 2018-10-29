@@ -28,7 +28,12 @@ def load_batch_real(dataset_dir, crop_size, format = '*.npy', burst_length = 7):
 
 # the training dats has the bayer pattern of RGGB
 def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_length = 7, repeats =1, height = 128, width= 128, min_queue = 8,
-                            to_shift = 1, upscale = 1, jitter=1, smalljitter = 1, shuffle = True, keep_size = False, ):
+                            to_shift = 1, upscale = 1, jitter=1, smalljitter = 1, shuffle = True, keep_size = False, upscale_rate =0.5 ):
+
+    # random to choose use upscale or not
+    # scale_prob = tf.random_uniform([])
+    # upscale = tf.cond(scale_prob < upscale_rate, lambda: 1,
+    #             lambda: upscale)
 
     file_names = glob(os.path.join(dataset_dir, '*.png'))
     file_names = sorted(file_names)
@@ -51,12 +56,16 @@ def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_le
     height_next, width_next = img.get_shape().as_list()[0], img.get_shape().as_list()[1]
     patches = make_stack_hqjitter((tf.cast(img, tf.float32) / 255.),
                                   height_next, width_next, patches_per_img, burst_length, to_shift, upscale, jitter)
-    unique = batch_size // repeats
+
+    print('PATCHES =================', patches.get_shape().as_list())
+
+    patches = make_batch_hqjitter(patches, burst_length, batch_size,
+                                  repeats, height_next, width_next, to_shift, upscale, jitter, smalljitter)
 
     if shuffle:
         patches = tf.train.shuffle_batch(
             [patches],
-            batch_size=unique,
+            batch_size=batch_size,
             num_threads=2,
             capacity=min_queue + 3 * batch_size,
             enqueue_many=True,
@@ -64,15 +73,11 @@ def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_le
     else:
         patches = tf.train.batch(
             [patches],
-            batch_size=unique,
+            batch_size=batch_size,
             num_threads=2,
             capacity=min_queue + 3 * batch_size,
             enqueue_many=True,)
 
-    print('PATCHES =================', patches.get_shape().as_list())
-
-    patches = make_batch_hqjitter(patches, burst_length, batch_size,
-                                  repeats, height_next, width_next, to_shift, upscale, jitter, smalljitter)
     print ('after make_batch_hqjitter: ', patches.shape)
     return patches
 
