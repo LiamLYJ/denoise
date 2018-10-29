@@ -21,7 +21,7 @@ flags.DEFINE_string('ckpt_dir', './logs/',
                     'Directory where to write training.')
 
 # flags.DEFINE_string('dataset_dir', './data/sony/val/', 'where the data is ')
-flags.DEFINE_string('dataset_dir', './data/real_test_day/', 'where the data is ')
+flags.DEFINE_string('dataset_dir', './data/stack_data_1029/', 'where the data is ')
 flags.DEFINE_integer('iter_num', 10, 'how many iter to run in test, in not use_fully_crop mode')
 
 flags.DEFINE_string('mode', 'fully_crop', 'normal, fully_crop')
@@ -196,14 +196,15 @@ def test_fake(FLAGS):
     # coord.join(threads)
 
 # regard inpy with one big image
-def test_real(FLAGS):
+def test_real(FLAGS, stack_index):
+    tf.reset_default_graph()
     mode = FLAGS.mode
     batch = FLAGS.batch_size
     final_W = FLAGS.final_W
     final_K = FLAGS.final_K
     crop_size = FLAGS.patch_size
     burst_length = FLAGS.burst_length
-    dataset_dir = os.path.join(FLAGS.dataset_dir)
+    dataset_dir = os.path.join(FLAGS.dataset_dir, 'stack%d'%(stack_index))
     burst_length = FLAGS.burst_length
     ckpt_dir = FLAGS.ckpt_dir
 
@@ -282,14 +283,23 @@ def test_real(FLAGS):
             after_filts.append(after_filt)
         output = np.concatenate(after_filts, axis = 0)
         output = utils.assem_in_order([output], size)
-        np.save(os.path.join(FLAGS.save_path, 'output_day.npy'), output[0])
-        imsave(os.path.join(FLAGS.save_path, 'output_day.png'), output[0])
+        np.save(os.path.join(FLAGS.save_path, '%02d.npy'%(stack_index)), output[0])
+        imsave(os.path.join(FLAGS.save_path, '%02d.png'%(stack_index)), output[0])
 
 def main(_):
     if not gfile.Exists(FLAGS.save_path):
         gfile.MakeDirs(FLAGS.save_path)
+    # test for fake data
     # test_fake(FLAGS)
-    test_real(FLAGS)
+
+    # test for real data
+    dirs = os.listdir(FLAGS.dataset_dir)
+    dirs_tmp = []
+    for item in dirs:
+        if 'stack' in item:
+            dirs_tmp.append(item)
+    for stack_index, _ in enumerate(dirs_tmp):
+        test_real(FLAGS, stack_index)
 
 if __name__ == '__main__':
     app.run()

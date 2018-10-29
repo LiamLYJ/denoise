@@ -16,10 +16,36 @@ import cv2
 import json
 from glob import glob
 from scipy.misc import imsave
+import cv2
 
 
 def np_load_batch():
     pass
+
+def prepare_data(data_dir, burst_length = 7):
+    for root, dir, files in os.walk(data_dir):
+        if len(files) < burst_length:
+            continue
+        files = sorted(files)
+        files_tmp = []
+        for item in files:
+            if 'ARW' in item:
+                files_tmp.append(item)
+        files = files_tmp[0:burst_length]
+        for file in files:
+            file_name = os.path.join(root, file)
+            command = 'dcraw -4 -D -T %s'%(file_name)
+            os.system(command)
+            # dcraw will extra into tiff
+            file_name_tiff = file_name[:-3] + 'tiff'
+            img = cv2.imread(file_name_tiff, cv2.IMREAD_UNCHANGED)
+            img = np.array(img , dtype = np.int16)
+            img = img - 512
+            img = img / (16383 - 512)
+            file_name_npy = file_name[:-3] + 'npy'
+            print ('saving %s'%(file_name_npy))
+            np.save(file_name_npy, img)
+
 
 def crop_in_order(file_names, save_dir, crop_size, with_data = False):
     # file_names shold be a list
@@ -188,6 +214,9 @@ if __name__ == '__main__':
     #     os.mkdir(d_dir_val)
     # prcocess_tiff(s_dir, d_dir_train, d_dir_val)
 
+    prepare_data('./data/stack_data_1029')
+
+    raise
     dataset_dir = './data/sony/val'
     file_names = glob(os.path.join(dataset_dir, '*.png'))
     file_names = sorted(file_names)[0:1]
