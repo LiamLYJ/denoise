@@ -65,7 +65,7 @@ def make_batch_hqjitter(patches, burst_length, batch_size, repeats, height, widt
             curr = tf.transpose(curr, [1, 2, 3, 0])
             batch.append(curr)
     batch = tf.stack(batch, axis=0)
-    print ('batch_inside_make_batch_hqjitter shape: ', batch.shape)
+    # print ('batch_inside_make_batch_hqjitter shape: ', batch.shape)
     return batch
 
 

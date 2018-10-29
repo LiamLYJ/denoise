@@ -10,6 +10,7 @@ import net
 from tf_utils import *
 import data_provider
 from demosaic_utils import *
+import numpy as np
 
 flags.DEFINE_integer('batch_size', 4, 'The number of images in each batch.')
 
@@ -63,10 +64,12 @@ def train(FLAGS):
     burst_length = FLAGS.burst_length
     select_ch = FLAGS.select_ch
 
+    # feed to choose scale
+    upscale_prob = tf.placeholder(tf.float32, shape=[])
     demosaic_truth = data_provider.load_batch(dataset_dir = dataset_dir, batch_size=batch_size, select_ch=select_ch,
                                     patches_per_img = 2, min_queue=2,
                                     burst_length = burst_length, repeats=2, height = height,
-                                    width = width, to_shift = 1., upscale = 4, jitter = 16, smalljitter = 2,
+                                    width = width, to_shift = 1., upscale = 1, upscale_prob = upscale_prob, jitter = 16, smalljitter = 2,
                                     )
 
     # shrinlk batcsize, h,w,1,burst_length to batch_size, h,w, burst_length
@@ -325,7 +328,8 @@ def train(FLAGS):
             saver.restore(sess, ckpt_path)
 
         for i_step in range(max_steps):
-            _, loss, i, = sess.run([train_step_g, total_loss, gs])
+            upscale_prob_value = float(np.random.poisson(1.5, []))
+            _, loss, i, = sess.run([train_step_g, total_loss, gs], feed_dict= {upscale_prob: upscale_prob_value})
             if i_step % 5 == 0:
                 print ('Step', i, 'loss =', loss)
 
@@ -342,10 +346,10 @@ def train(FLAGS):
                 # fdict = {tf_var: np_val for tf_var,
                 #          np_val in zip(tf_vars, np_vals)}
 
-                run_summaries(sess, writer, summaries, i_step)
+                run_summaries(sess, writer, summaries, i_step, fdict= {upscale_prob: upscale_prob_value})
 
                 if ((i+1) % 10 == 0 and i < 200) or ((i+1) % 200 == 0):
-                    run_summaries(sess, writer, image_summaries, i_step)
+                    run_summaries(sess, writer, image_summaries, i_step, fdict= {upscale_prob: upscale_prob_value})
                 print ('summary saved')
 
 
