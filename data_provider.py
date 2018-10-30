@@ -83,10 +83,13 @@ def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_le
     patches_all = [get_patch_queue(1), get_patch_queue(2), get_patch_queue(3), get_patch_queue(4)]
 
     if not upscale_prob is None:
-        patches = tf.cond(upscale_prob < 4, lambda: patches_all[2],
-                lambda: patches_all[3])
-        patches = tf.cond(upscale_prob < 3, lambda: patches_all[0],
-                lambda: patches_all[1])
+        patches = tf.cond(upscale_prob < 2, lambda: patches_all[0],
+                    lambda: tf.cond(upscale_prob < 3, lambda: patches_all[1],
+                        lambda: tf.cond(upscale_prob < 4, lambda: patches_all[2],
+                            lambda: patches_all[3]
+                            )
+                        )
+                    )
     else:
         patches = patches_all[0]
     # tf freaking stuff.....

@@ -16,7 +16,7 @@ flags.DEFINE_integer('batch_size', 4, 'The number of images in each batch.')
 
 flags.DEFINE_integer('patch_size', 128, 'The height/width of images in each batch.')
 
-flags.DEFINE_string('train_log_dir', './logs_upscale_4/',
+flags.DEFINE_string('train_log_dir', './logs_upscale/',
                     'Directory where to write training.')
 
 flags.DEFINE_string('dataset_dir', './data/sony/train/', '')
@@ -65,7 +65,7 @@ def train(FLAGS):
     select_ch = FLAGS.select_ch
 
     # feed to choose scale
-    upscale_prob = tf.placeholder(tf.float32, shape=[])
+    upscale_prob = tf.placeholder(tf.int32, shape=[])
     demosaic_truth = data_provider.load_batch(dataset_dir = dataset_dir, batch_size=batch_size, select_ch=select_ch,
                                     patches_per_img = 2, min_queue=2,
                                     burst_length = burst_length, repeats=2, height = height,
@@ -328,7 +328,7 @@ def train(FLAGS):
             saver.restore(sess, ckpt_path)
 
         for i_step in range(max_steps):
-            upscale_prob_value = float(np.random.poisson(1.5, []))
+            upscale_prob_value = np.random.poisson(2.0, [])
             _, loss, i, = sess.run([train_step_g, total_loss, gs], feed_dict= {upscale_prob: upscale_prob_value})
             if i_step % 5 == 0:
                 print ('Step', i, 'loss =', loss)
