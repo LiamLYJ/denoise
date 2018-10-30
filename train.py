@@ -49,9 +49,6 @@ flags.DEFINE_float('read_noise', 0.000000483, 'read noise from noise profile')
 flags.DEFINE_float('shot_noise', 0.00059, 'shot noise from noise profile')
 flags.DEFINE_float('reg_weight', 0.001, 'weight loss for filt reg')
 
-#choose specific channel
-flags.DEFINE_string('select_ch', None, 'choose which channel to process')
-
 FLAGS = flags.FLAGS
 
 def train(FLAGS):
@@ -62,11 +59,10 @@ def train(FLAGS):
     burst_length = FLAGS.burst_length
     dataset_dir = os.path.join(FLAGS.dataset_dir)
     burst_length = FLAGS.burst_length
-    select_ch = FLAGS.select_ch
 
     # feed to choose scale
     upscale_prob = tf.placeholder(tf.int32, shape=[])
-    demosaic_truth = data_provider.load_batch(dataset_dir = dataset_dir, batch_size=batch_size, select_ch=select_ch,
+    demosaic_truth = data_provider.load_batch(dataset_dir = dataset_dir, batch_size=batch_size,
                                     patches_per_img = 2, min_queue=2,
                                     burst_length = burst_length, repeats=2, height = height,
                                     width = width, to_shift = 1., upscale = 1, upscale_prob = upscale_prob, jitter = 16, smalljitter = 2,
@@ -328,8 +324,19 @@ def train(FLAGS):
             saver.restore(sess, ckpt_path)
 
         for i_step in range(max_steps):
-            upscale_prob_value = np.random.poisson(2.0, [])
-            _, loss, i, = sess.run([train_step_g, total_loss, gs], feed_dict= {upscale_prob: upscale_prob_value})
+            i = sess.run(gs)
+            if i < 10000:
+                possion_k = 0.1
+            elif i < 40000:
+                possion_k = 0.5
+            elif i < 100000:
+                possion_k = 1.0
+            elif i < 200000:
+                possion_k = 1.5
+            else:
+                possion_k = 1.8
+            upscale_prob_value = np.random.poisson(possion_k, [])
+            _, loss, = sess.run([train_step_g, total_loss, ], feed_dict= {upscale_prob: upscale_prob_value})
             if i_step % 5 == 0:
                 print ('Step', i, 'loss =', loss)
 

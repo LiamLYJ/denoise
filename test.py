@@ -38,8 +38,6 @@ flags.DEFINE_string('save_path', './save_path', '')
 flags.DEFINE_float('read_noise', 0.000000483, 'read noise from noise profile')
 flags.DEFINE_float('shot_noise', 0.00059, 'shot noise from noise profile')
 
-#choose specific channel
-flags.DEFINE_string('select_ch', None, 'choose which channel to process')
 
 FLAGS = flags.FLAGS
 
@@ -53,7 +51,6 @@ def test_fake(FLAGS):
     dataset_dir = os.path.join(FLAGS.dataset_dir)
     burst_length = FLAGS.burst_length
     ckpt_dir = FLAGS.ckpt_dir
-    select_ch = FLAGS.select_ch
 
     size_list = []
     tmp_dataset_dir = dataset_dir
@@ -70,7 +67,7 @@ def test_fake(FLAGS):
         size_list = utils.crop_in_order(file_names, FLAGS.itmd_dir, FLAGS.patch_size)
         tmp_dataset_dir = FLAGS.itmd_dir
 
-    truth = data_provider.load_batch(dataset_dir = tmp_dataset_dir, batch_size=1, select_ch=select_ch,
+    truth = data_provider.load_batch(dataset_dir = tmp_dataset_dir, batch_size=1, 
                                     patches_per_img = 1, min_queue=1,
                                     burst_length = burst_length, repeats=1, height = height,
                                     width = width, to_shift = 1., upscale = 1, jitter = 16, smalljitter = 2, shuffle = False,

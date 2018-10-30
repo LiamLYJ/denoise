@@ -23,9 +23,14 @@ def make_stack_hqjitter(image, height, width, depth, burst_length, to_shift, ups
     j_up = jitter * upscale
     h_up = height * upscale + 2 * j_up
     w_up = width * upscale + 2 * j_up
-    v_error = tf.maximum((h_up - tf.shape(image)[0] + 1) // 2, 0)
-    h_error = tf.maximum((w_up - tf.shape(image)[1] + 1) // 2, 0)
-    image = tf.pad(image, [[v_error, v_error], [h_error, h_error], [0, 0]])
+
+    # original implementation
+    # just leve below to be cropped
+    # input image with original resolution raw  !!!!
+
+    # v_error = tf.maximum((h_up - tf.shape(image)[0] + 1) // 2, 0)
+    # h_error = tf.maximum((w_up - tf.shape(image)[1] + 1) // 2, 0)
+    # image = tf.pad(image, [[v_error, v_error], [h_error, h_error], [0, 0]])
 
     stack = []
     for i in range(depth):
@@ -36,7 +41,7 @@ def make_stack_hqjitter(image, height, width, depth, burst_length, to_shift, ups
 
 def make_batch_hqjitter(patches, burst_length, batch_size, repeats, height, width,
                         to_shift, upscale, jitter, smalljitter):
-    # patches is [burst_length, h_up, w_up, 3]
+    # patches is [burst_length, h_up, w_up, 1]
     j_up = jitter * upscale
     h_up = height * upscale  # + 2 * j_up
     w_up = width * upscale  # + 2 * j_up
@@ -57,11 +62,14 @@ def make_batch_hqjitter(patches, burst_length, batch_size, repeats, height, widt
                 flip = tf.random_uniform([])
                 p2use = tf.cond(flip < prob, lambda: bigj_patches,
                                 lambda: smallj_patches)
-                # curr.append(tf.random_crop(p2use[i, ...], [h_up, w_up, 3]))
                 curr.append(tf.random_crop(p2use[i, ...], [h_up, w_up, 1]))
+            # new added see comment below
+            curr = [tf.random_crop(item, [height, width, 1]) for item in curr]
             curr = tf.stack(curr, axis=0)
-            curr = tf.image.resize_images(
-                curr, [height, width], method=tf.image.ResizeMethod.AREA)
+            # original implementation
+            # curr = tf.image.resize_images(
+            #     curr, [height, width], method=tf.image.ResizeMethod.AREA)
+            # use crop inside instead for raw
             curr = tf.transpose(curr, [1, 2, 3, 0])
             batch.append(curr)
     batch = tf.stack(batch, axis=0)

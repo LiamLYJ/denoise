@@ -93,20 +93,30 @@ def assem_in_order(input_list, box_size):
     return return_list
 
 
-def prcocess_tiff(s_dir, d_dir_train, d_dir_val, bl = 200, wl = 3840):
+def prcocess_tiff(s_dir, d_dir_train, d_dir_val, bl = 200, wl = 3840, mending = False):
     file_names = glob(os.path.join(s_dir, '*.tiff'))
     for file_name in file_names:
-        print ('processing file: ', file_name)
-        img = cv2.imread(file_name, -1)
-        img = (img - bl) / (wl - bl)
-        img *= 255.0
-        coin = random.random()
-        if coin > 0.3:
+        if mending:
             save_name = os.path.join(d_dir_train, file_name.split('/')[-1][:-5] + '.png')
+            if not os.path.isfile(save_name):    
+                print ('processing file: ', file_name)
+                img = cv2.imread(file_name, -1)
+                save_name = os.path.join(d_dir_val, file_name.split('/')[-1][:-5] + '.png')
+                cv2.imwrite(save_name, img)
+            else:
+                print ('%s, exits'%(file_name))
         else:
-            save_name = os.path.join(d_dir_val, file_name.split('/')[-1][:-5] + '.png')
-        # print (save_name)
-        cv2.imwrite(save_name, img)
+            print ('processing file: ', file_name)
+            img = cv2.imread(file_name, -1)
+            img = (img - bl) / (wl - bl)
+            img *= 255.0
+            coin = random.random()
+            if coin > 0.3:
+                save_name = os.path.join(d_dir_train, file_name.split('/')[-1][:-5] + '.png')
+            else:
+                save_name = os.path.join(d_dir_val, file_name.split('/')[-1][:-5] + '.png')
+            # print (save_name)
+            cv2.imwrite(save_name, img)
 
 def batch_stable_process(img_batch, use_crop, use_clip, use_flip, use_rotate, use_noise):
     b,h,w,_ = img_batch.shape
@@ -205,15 +215,16 @@ def special_downsampling(img, scale):
 
 
 if __name__ == '__main__':
-    # s_dir = '../Downloads/Sony'
-    # d_dir_train = './data/sony/train'
-    # d_dir_val = './data/sony/val'
-    # if not os.path.exists(d_dir_train):
-    #     os.mkdir(d_dir_train)
-    # if not os.path.exists(d_dir_val):
-    #     os.mkdir(d_dir_val)
-    # prcocess_tiff(s_dir, d_dir_train, d_dir_val)
+    s_dir = '../Downloads/Sony'
+    d_dir_train = './data/sony/train'
+    d_dir_val = './data/sony/val'
+    if not os.path.exists(d_dir_train):
+        os.mkdir(d_dir_train)
+    if not os.path.exists(d_dir_val):
+        os.mkdir(d_dir_val)
+    prcocess_tiff(s_dir, d_dir_train, d_dir_val, mending= True)
 
+    raise
     prepare_data('./data/stack_data_1029')
 
     raise

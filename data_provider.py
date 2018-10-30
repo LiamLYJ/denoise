@@ -27,10 +27,9 @@ def load_batch_real(dataset_dir, crop_size, format = '*.npy', burst_length = 7):
 
 
 # the training dats has the bayer pattern of RGGB
-def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_length = 7, repeats =1, height = 128, width= 128, min_queue = 8,
+def load_batch(dataset_dir, batch_size, patches_per_img = 2, burst_length = 7, repeats =1, height = 128, width= 128, min_queue = 8,
                             to_shift = 1, upscale = 1, jitter=1, smalljitter = 1, shuffle = True, keep_size = False, upscale_prob = None):
 
-    # random to choose use upscale or not
 
     file_names = glob(os.path.join(dataset_dir, '*.png'))
     file_names = sorted(file_names)
@@ -38,26 +37,13 @@ def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_le
     _, img_file = tf.WholeFileReader().read(file_name_queue)
     img_pure = tf.image.decode_png(img_file)
 
-    # select_ch is None: just raddom crop from img_pure
-    # else: select channel and resize
-    if select_ch is None:
-        img = tf.random_crop(img_pure, size = [height, width, 1])
-    else:
-        # 20 need to be n times of 4 (RGGB)
-        img_pure = tf.image.crop_to_bounding_box(img_pure, 0,0, height * 20, width*20)
+    # img_pure = tf.random_crop(img_pure, [height, width, 1])
 
-        img = select_raw(img_pure, select_ch)
-        if not keep_size:
-            img = tf.random_crop(img_pure, size = [height, width, 1])
-
-    print ('img shape: ', img.get_shape().as_list())
-
-    height_next, width_next = img.get_shape().as_list()[0], img.get_shape().as_list()[1]
-
+    # split upscale into three level
     # tf freaking stuff ,........
     def get_patch_queue(times_upscale):
-        patches_tmp = make_stack_hqjitter((tf.cast(img, tf.float32) / 255.),
-                                      height_next, width_next, patches_per_img, burst_length, to_shift, int(upscale * times_upscale), jitter)
+        patches_tmp = make_stack_hqjitter((tf.cast(img_pure, tf.float32) / 255.),
+                                      height, width, patches_per_img, burst_length, to_shift, int(upscale * times_upscale), jitter)
 
         unique = batch_size // repeats
 
@@ -77,11 +63,10 @@ def load_batch(dataset_dir, batch_size, select_ch, patches_per_img = 2, burst_le
                 capacity=min_queue + 3 * batch_size,
                 enqueue_many=True,)
         patches_tmp = make_batch_hqjitter(patches_tmp, burst_length, batch_size,
-                                  repeats, height_next, width_next, to_shift, int(upscale * times_upscale), jitter, smalljitter)
+                                  repeats, height, width, to_shift, int(upscale * times_upscale), jitter, smalljitter)
         return patches_tmp
 
     patches_all = [get_patch_queue(1), get_patch_queue(2), get_patch_queue(3), get_patch_queue(4)]
-
     if not upscale_prob is None:
         patches = tf.cond(upscale_prob < 2, lambda: patches_all[0],
                     lambda: tf.cond(upscale_prob < 3, lambda: patches_all[1],
